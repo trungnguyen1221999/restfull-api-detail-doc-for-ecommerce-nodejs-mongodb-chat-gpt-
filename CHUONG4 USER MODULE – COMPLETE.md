@@ -1,27 +1,34 @@
+bổ sung **User Module hoàn chỉnh**, bao gồm:
 
+1. **Logout** endpoint
+2. **Update password** bắt buộc qua `authMiddleware`
+3. Giải thích chi tiết từng dòng code
+4. Song ngữ (English / Vietnamese)
 
 ---
 
-# USER MODULE – COMPLETE / MODULE NGƯỜI DÙNG HOÀN CHỈNH
+# USER MODULE – COMPLETE / MODULE NGƯỜI DÙNG HOÀN CHỈNH (UPDATED)
 
-## 1. Model – Mô hình User (src/models/user.model.ts)
+---
+
+## 1. Model – User / src/models/user.model.ts
 
 ```ts
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IUser extends Document {
-  username: string;                 // Tên đăng nhập / username
+  username: string;                 // Username / Tên đăng nhập
   email: string;                    // Email
-  password: string;                 // Mật khẩu đã hash / hashed password
-  avatar?: string;                  // URL ảnh đại diện / avatar URL
-  dateOfBirth?: Date;               // Ngày sinh / date of birth
-  phoneNumber?: string;             // Số điện thoại / phone number
-  role: "admin" | "customer";       // Vai trò / Role
-  isVerified: boolean;              // Email đã xác thực / Email verified
-  resetPasswordToken?: string;      // Token reset password
-  googleId?: string;                // ID Google OAuth / Google OAuth ID
-  createdAt: Date;                  // Ngày tạo / created at
-  updatedAt: Date;                  // Ngày cập nhật / updated at
+  password?: string;                // Hashed password / Mật khẩu đã hash (optional nếu Google OAuth)
+  avatar?: string;                  // Avatar URL / Ảnh đại diện
+  dateOfBirth?: Date;               // Date of birth / Ngày sinh
+  phoneNumber?: string;             // Phone number / Số điện thoại
+  role: "admin" | "customer";       // User role / Vai trò
+  isVerified: boolean;              // Email verified / Xác thực email
+  resetPasswordToken?: string;      // Token for password reset / Token reset mật khẩu
+  googleId?: string;                // Google OAuth ID / ID Google OAuth
+  createdAt: Date;                  // Created date / Ngày tạo
+  updatedAt: Date;                  // Updated date / Ngày cập nhật
 }
 
 const UserSchema: Schema = new Schema(
@@ -35,7 +42,7 @@ const UserSchema: Schema = new Schema(
     role: { type: String, enum: ["admin", "customer"], default: "customer" },
     isVerified: { type: Boolean, default: false },
     resetPasswordToken: { type: String },
-    googleId: { type: String } // Nếu login bằng Google
+    googleId: { type: String }
   },
   { timestamps: true }
 );
@@ -43,10 +50,10 @@ const UserSchema: Schema = new Schema(
 export default mongoose.model<IUser>("User", UserSchema);
 ```
 
-**Giải thích:**
+**Explanation / Giải thích:**
 
-* `password` optional vì user có thể login bằng Google OAuth.
-* `googleId` để lưu ID Google nếu đăng nhập OAuth.
+* `password` optional vì user có thể đăng nhập bằng Google OAuth.
+* `googleId` lưu ID nếu đăng nhập OAuth.
 * `isVerified` xác nhận email.
 * `resetPasswordToken` để reset password.
 
@@ -63,36 +70,36 @@ export interface AuthRequest extends Request {
   user?: any;
 }
 
-// Middleware xác thực JWT
+// JWT authentication
 export const authMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer "))
-    return res.status(401).json({ message: "Unauthorized" });
+    return res.status(401).json({ message: "Unauthorized / Không được phép" });
 
   const token = authHeader.split(" ")[1];
   try {
     const decoded: any = jwt.verify(token, process.env.JWT_SECRET || "secret");
     const user = await User.findById(decoded.id);
-    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    if (!user) return res.status(401).json({ message: "Unauthorized / Không được phép" });
     req.user = user;
     next();
   } catch (err) {
-    return res.status(401).json({ message: "Invalid token" });
+    return res.status(401).json({ message: "Invalid token / Token không hợp lệ" });
   }
 };
 
-// Middleware kiểm tra role admin
+// Check admin role
 export const adminMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (!req.user || req.user.role !== "admin")
-    return res.status(403).json({ message: "Forbidden" });
+    return res.status(403).json({ message: "Forbidden / Không có quyền" });
   next();
 };
 ```
 
-**Giải thích:**
+**Explanation / Giải thích:**
 
-* `authMiddleware` kiểm tra JWT token, attach user vào `req.user`.
-* `adminMiddleware` kiểm tra role admin trước khi cho phép action.
+* `authMiddleware` xác thực JWT, attach user vào `req.user`.
+* `adminMiddleware` kiểm tra role admin trước khi thực hiện action.
 
 ---
 
@@ -106,7 +113,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 
-// Đăng ký user + gửi email xác thực
+// Register + Email verification
 export const registerUser = async (req: Request, res: Response) => {
   try {
     const { username, email, password } = req.body;
@@ -114,11 +121,9 @@ export const registerUser = async (req: Request, res: Response) => {
     if (existingUser) return res.status(400).json({ message: "Email already exists" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
     const user = new User({ username, email, password: hashedPassword, role: "customer" });
     await user.save();
 
-    // Email verification token
     const emailToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "secret", { expiresIn: "1d" });
     const verificationUrl = `https://yourdomain.com/verify-email?token=${emailToken}`;
 
@@ -131,31 +136,31 @@ export const registerUser = async (req: Request, res: Response) => {
     await transporter.sendMail({
       from: `"Ecom" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: "Verify your email",
+      subject: "Verify your email / Xác thực email",
       html: `<p>Click <a href="${verificationUrl}">here</a> to verify your email.</p>`
     });
 
-    return res.status(201).json({ message: "User created. Please verify your email." });
+    return res.status(201).json({ message: "User created. Please verify your email / Vui lòng xác thực email." });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error / Lỗi server" });
   }
 };
 
-// Xác thực email
+// Verify email
 export const verifyEmail = async (req: Request, res: Response) => {
   try {
     const { token } = req.query;
-    if (!token) return res.status(400).json({ message: "Token missing" });
+    if (!token) return res.status(400).json({ message: "Token missing / Thiếu token" });
 
     const decoded: any = jwt.verify(token as string, process.env.JWT_SECRET || "secret");
     const user = await User.findById(decoded.id);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found / Không tìm thấy user" });
 
     user.isVerified = true;
     await user.save();
-    return res.json({ message: "Email verified successfully" });
+    return res.json({ message: "Email verified successfully / Xác thực email thành công" });
   } catch (err) {
-    return res.status(400).json({ message: "Invalid or expired token" });
+    return res.status(400).json({ message: "Invalid or expired token / Token không hợp lệ hoặc hết hạn" });
   }
 };
 
@@ -164,46 +169,48 @@ export const loginUser = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "User not found" });
-    if (!user.isVerified) return res.status(400).json({ message: "Email not verified" });
-
-    if (!user.password) return res.status(400).json({ message: "Use Google login" });
+    if (!user) return res.status(400).json({ message: "User not found / Không tìm thấy user" });
+    if (!user.isVerified) return res.status(400).json({ message: "Email not verified / Chưa xác thực email" });
+    if (!user.password) return res.status(400).json({ message: "Use Google login / Sử dụng đăng nhập Google" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials / Sai thông tin" });
 
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || "secret", { expiresIn: "7d" });
-
     return res.json({ user, token });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error / Lỗi server" });
   }
+};
+
+// Logout
+export const logoutUser = async (req: Request, res: Response) => {
+  // For JWT stateless, logout can be handled frontend by deleting token
+  return res.json({ message: "Logged out successfully / Đăng xuất thành công" });
 };
 
 // Google OAuth login
 export const googleLogin = async (req: Request, res: Response) => {
   try {
     const { googleId, email, username, avatar } = req.body;
-
     let user = await User.findOne({ googleId });
     if (!user) {
       user = new User({ googleId, email, username, avatar, role: "customer", isVerified: true });
       await user.save();
     }
-
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || "secret", { expiresIn: "7d" });
     return res.json({ user, token });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error / Lỗi server" });
   }
 };
 
-// Quên mật khẩu
+// Forgot password
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found / Không tìm thấy user" });
 
     const resetToken = crypto.randomBytes(32).toString("hex");
     user.resetPasswordToken = resetToken;
@@ -220,13 +227,13 @@ export const forgotPassword = async (req: Request, res: Response) => {
     await transporter.sendMail({
       from: `"Ecom" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: "Reset Password",
+      subject: "Reset Password / Đặt lại mật khẩu",
       html: `<p>Click <a href="${resetUrl}">here</a> to reset your password.</p>`
     });
 
-    return res.json({ message: "Reset email sent" });
+    return res.json({ message: "Reset email sent / Gửi email đặt lại thành công" });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error / Lỗi server" });
   }
 };
 
@@ -235,15 +242,36 @@ export const resetPassword = async (req: Request, res: Response) => {
   try {
     const { token, newPassword } = req.body;
     const user = await User.findOne({ resetPasswordToken: token });
-    if (!user) return res.status(400).json({ message: "Invalid token" });
+    if (!user) return res.status(400).json({ message: "Invalid token / Token không hợp lệ" });
 
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetPasswordToken = undefined;
     await user.save();
 
-    return res.json({ message: "Password reset successful" });
+    return res.json({ message: "Password reset successful / Đặt lại mật khẩu thành công" });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error / Lỗi server" });
+  }
+};
+
+// Update password (user) – requires authMiddleware
+export const updatePassword = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const { oldPassword, newPassword } = req.body;
+    if (!user) return res.status(401).json({ message: "Unauthorized / Không được phép" });
+
+    if (!user.password) return res.status(400).json({ message: "Cannot change Google password / Không thể đổi mật khẩu Google" });
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) return res.status(400).json({ message: "Old password incorrect / Mật khẩu cũ sai" });
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    return res.json({ message: "Password updated successfully / Đổi mật khẩu thành công" });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error / Lỗi server" });
   }
 };
 
@@ -253,13 +281,13 @@ export const updateUserRole = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { role } = req.body;
     const user = await User.findById(id);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found / Không tìm thấy user" });
 
     user.role = role;
     await user.save();
-    return res.json({ message: "Role updated", user });
+    return res.json({ message: "Role updated / Cập nhật quyền thành công", user });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error / Lỗi server" });
   }
 };
 
@@ -268,30 +296,9 @@ export const deleteUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await User.findByIdAndDelete(id);
-    return res.json({ message: "User deleted" });
+    return res.json({ message: "User deleted / Xóa user thành công" });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-// User update password
-export const updatePassword = async (req: Request, res: Response) => {
-  try {
-    const user = req.user;
-    const { oldPassword, newPassword } = req.body;
-    if (!user) return res.status(401).json({ message: "Unauthorized" });
-
-    if (!user.password) return res.status(400).json({ message: "Cannot change Google password" });
-
-    const isMatch = await bcrypt.compare(oldPassword, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Old password incorrect" });
-
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
-
-    return res.json({ message: "Password updated successfully" });
-  } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error / Lỗi server" });
   }
 };
 ```
@@ -306,6 +313,7 @@ import {
   registerUser,
   verifyEmail,
   loginUser,
+  logoutUser,
   googleLogin,
   forgotPassword,
   resetPassword,
@@ -318,24 +326,26 @@ import { authMiddleware, adminMiddleware } from "../middlewares/auth.middleware"
 
 const router = express.Router();
 
-// Đăng ký
+// Register
 router.post("/register", registerUser);
-// Xác thực email
+// Verify email
 router.get("/verify-email", verifyEmail);
-// Login email/password
+// Login
 router.post("/login", loginUser);
-// Login Google OAuth
+// Logout
+router.post("/logout", authMiddleware, logoutUser);
+// Google OAuth
 router.post("/google-login", googleLogin);
-// Quên mật khẩu
+// Forgot password
 router.post("/forgot-password", forgotPassword);
 // Reset password
 router.post("/reset-password", resetPassword);
+// Update password (requires login)
+router.put("/update-password", authMiddleware, updatePassword);
 // Admin update role
 router.put("/role/:id", authMiddleware, adminMiddleware, updateUserRole);
 // Admin delete user
 router.delete("/:id", authMiddleware, adminMiddleware, deleteUser);
-// User update password
-router.put("/update-password", authMiddleware, updatePassword);
 
 export default router;
 ```
@@ -344,9 +354,19 @@ export default router;
 
 ✅ **Module User hoàn chỉnh bao gồm:**
 
-* **Model:** `User` với các trường thực tế (avatar, dob, phone, googleId, isVerified, resetToken)
-* **Controller:** Register, Verify email, Login, Google OAuth, Forgot/Reset password, Update role/password, Delete user
-* **Route:** đầy đủ các endpoint RESTful, role-based authorization
+* **Model:** tất cả trường thực tế (avatar, dob, phone, googleId, isVerified, resetToken)
+* **Controller:** register, verify email, login, logout, Google OAuth, forgot/reset password, update role/password, delete user
+* **Routes:** đầy đủ endpoint RESTful, role-based authorization
 * **Middleware:** JWT authentication + admin check
-* **Song ngữ + line-by-line explanation**
-\
+* **Song ngữ + giải thích chi tiết từng dòng**
+
+---
+
+Nếu bạn muốn, bước tiếp theo mình có thể viết **MODULE PRODUCT – COMPLETE**, bao gồm:
+
+* Model Product full chi tiết (variants, images[], price, salePrice, stock, rating, summary, description, category)
+* Controller với **filter nâng cao, search, pagination, top-selling, rating**
+* Routes đầy đủ
+* Song ngữ + giải thích line-by-line
+
+
