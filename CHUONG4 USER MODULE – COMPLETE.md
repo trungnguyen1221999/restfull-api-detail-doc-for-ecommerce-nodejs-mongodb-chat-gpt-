@@ -590,3 +590,138 @@ Admin / Customer role management
 
 Multi-device login với refresh tokens
 
+
+trực quan flow diagram minh họa toàn bộ User Module – JWT + Refresh + OAuth
+
+
+---
+
+User Module Flow – JWT / Refresh / OAuth
+
+1. Register + Email Verification
+
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant EmailServer
+
+    User->>Frontend: Submit registration form
+    Frontend->>Backend: POST /auth/register
+    Backend->>Database: Create user (password hashed, isVerified=false)
+    Backend->>EmailServer: Send verification email (token)
+    EmailServer-->>User: Email with link
+    User->>Frontend: Click verification link
+    Frontend->>Backend: GET /auth/verify-email?token=xxx
+    Backend->>Database: Update isVerified=true
+    Backend-->>Frontend: 200 OK
+
+Giải thích / Explanation:
+
+isVerified=false → user chưa xác thực email
+
+JWT token trong email link để verify
+
+Multi-language messages: VN + EN
+
+
+
+---
+
+2. Login + JWT + Refresh Token
+
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Database
+
+    User->>Frontend: Submit login form (email + password)
+    Frontend->>Backend: POST /auth/login
+    Backend->>Database: Check email, password hash, isVerified
+    Database-->>Backend: Return user
+    Backend->>Frontend: Set HttpOnly refreshToken cookie + return accessToken
+    Frontend->>Frontend: Store accessToken (memory / localStorage)
+
+Giải thích / Explanation:
+
+AccessToken: ngắn hạn (~15min), lưu memory/localStorage
+
+RefreshToken: dài hạn (~7d), HttpOnly cookie
+
+Khi accessToken hết hạn, Axios interceptor tự động gọi /refresh-token
+
+
+
+---
+
+3. Refresh Token Flow
+
+sequenceDiagram
+    participant Frontend
+    participant Backend
+    participant Database
+
+    Frontend->>Backend: Access protected API with expired accessToken
+    Backend-->>Frontend: 401 Unauthorized
+    Frontend->>Backend: POST /auth/refresh-token (cookie refreshToken)
+    Backend->>Database: Validate refreshToken
+    Database-->>Backend: OK
+    Backend->>Frontend: Return new accessToken + set new refreshToken cookie
+    Frontend->>Frontend: Retry original request with new accessToken
+
+Giải thích / Explanation:
+
+Multi-device login: mỗi refreshToken lưu trong user.refreshTokens[]
+
+Invalid / removed refreshToken → 403
+
+
+
+---
+
+4. Logout Flow
+
+sequenceDiagram
+    participant Frontend
+    participant Backend
+    participant Database
+
+    User->>Frontend: Click logout
+    Frontend->>Backend: POST /auth/logout
+    Backend->>Database: Remove refreshToken from user.refreshTokens[]
+    Backend-->>Frontend: Clear cookie + 200 OK
+    Frontend->>Frontend: Remove accessToken from memory/localStorage
+
+
+---
+
+5. Google OAuth Flow
+
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Google
+    participant Backend
+    participant Database
+
+    User->>Frontend: Click "Login with Google"
+    Frontend->>Google: Google Sign-In
+    Google-->>Frontend: Google profile (id, email, name, avatar)
+    Frontend->>Backend: POST /auth/google-login (googleId + profile)
+    Backend->>Database: Check/create user
+    Backend-->>Frontend: accessToken + set refreshToken cookie
+    Frontend->>Frontend: Store accessToken
+
+Giải thích / Explanation:
+
+password optional → login Google không cần mật khẩu
+
+Google ID lưu trong user.googleId
+
+Email verification không cần cho OAuth
+
+
+
+---
+
